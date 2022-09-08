@@ -1,5 +1,11 @@
 package main
 
+import (
+	"fmt"
+	"sync"
+	"time"
+)
+
 /*
 === Or channel ===
 
@@ -34,5 +40,48 @@ fmt.Printf(“fone after %v”, time.Since(start))
 */
 
 func main() {
+	sig := func(after time.Duration) <-chan interface{} {
+		c := make(chan interface{})
+		go func() {
+			defer close(c)
+			time.Sleep(after)
+		}()
+		return c
+	}
 
+	start := time.Now()
+	<-CompileChannels(
+		sig(2*time.Hour),
+		sig(5*time.Minute),
+		sig(1*time.Second),
+		sig(1*time.Hour),
+		sig(1*time.Minute),
+	)
+
+	fmt.Printf("fone after %v", time.Since(start))
+
+}
+
+func CompileChannels(channels ...<-chan interface{}) <-chan interface{} {
+	const outBuff = 100
+	out := make(chan interface{}, outBuff)
+	wg := sync.WaitGroup{}
+
+	// If add 1 - implementation of 'or' logic. If Add len(channels) - it compiles all data from channels into out.
+	wg.Add(1)
+	for _, ch := range channels {
+		go func(ch <-chan interface{}) {
+			for data := range ch {
+				out <- data
+			}
+			wg.Done()
+		}(ch)
+	}
+
+	go func() {
+		wg.Wait()
+		close(out)
+	}()
+
+	return out
 }
